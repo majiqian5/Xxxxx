@@ -53,13 +53,6 @@ static void LBLog(NSString *fmt, ...) {
     }
 }
 
-static NSDictionary *ReadJSON(NSString *path) {
-    NSData *d = [NSData dataWithContentsOfFile:path];
-    if (!d || d.length < 2) return nil;
-    id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
-    return [obj isKindOfClass:[NSDictionary class]] ? obj : nil;
-}
-
 static NSString *ScanString(NSString *s, NSString *key) {
     NSString *needle = [NSString stringWithFormat:@"\"%@\":\"", key];
     NSRange r = [s rangeOfString:needle];
