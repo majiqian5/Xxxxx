@@ -1,6 +1,8 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <math.h>
+#import <objc/runtime.h>
+#include <stdlib.h>
 
 #define kLogPath @"/var/mobile/Documents/lyricbubble.log"
 #define kNP      @"/var/mobile/Documents/np.js"
@@ -36,7 +38,65 @@ static UIView  *gTail;
 static UILabel *gLabel;
 static BOOL     gShown = NO;
 
+static BOOL gRoamHookInstalled = NO;
+static BOOL gRoamPaused = NO;
+
+static void MyRoamAdvance(id self, SEL _cmd) {
+    if (!gRoamPaused) {
+        gRoamPaused = YES;
+        @try { [self setValue:@(YES) forKey:@"mowang_dafeiyupet_roamPaused"]; } @catch (NSException *e) {}
+    }
+}
+
+static void InstallRoamHook(void) {
+    if (gRoamHookInstalled) return;
+    Class cls = objc_getClass("MowangDaFeiYuPetController");
+    if (!cls) return;
+    SEL sel = sel_registerName("mowang_dafeiyupet_roamAdvance");
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return;
+    method_setImplementation(m, (IMP)MyRoamAdvance);
+    gRoamHookInstalled = YES;
+    LBLog(@"roam hook installed");
+}
+
+static void DrivePet(void) {
+    InstallRoamHook();
+    if (!gRoamHookInstalled) return;
+    UIView *pet = FindPetView();
+    if (!pet) return;
+
+    static CGPoint target;
+    static NSTimeInterval nextAt = 0;
+    static BOOL inited = NO;
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    CGRect sb = [UIScreen mainScreen].bounds;
+
+    if (!inited) {
+        inited = YES;
+        target = pet.center;
+        nextAt = now + 5 + arc4random_uniform(5);
+        return;
+    }
+    if (now < nextAt) return;
+
+    CGFloat margin = 56.0;
+    CGFloat maxX = sb.size.width - margin, maxY = sb.size.height - margin - 90;
+    if (maxX < margin) maxX = margin;
+    if (maxY < margin) maxY = margin;
+    CGPoint t = CGPointMake(margin + arc4random_uniform((uint32_t)(maxX - margin)),
+                            margin + arc4random_uniform((uint32_t)(maxY - margin)));
+    target = t;
+    nextAt = now + 6 + arc4random_uniform(6);
+
+    [UIView animateWithDuration:1.4 delay:0
+                         options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{ pet.center = t; }
+                     completion:nil];
+}
+
 static void LayoutBubble(void);
+static UILabel *FindPetBubbleLabel(void);
 static UIView *FindPetView(void);
 
 static void LBLog(NSString *fmt, ...) {
@@ -174,6 +234,7 @@ static void SetShown(BOOL show) {
 }
 
 static void Tick(void) {
+    static NSString *lastLine = nil;
     NSDictionary *np = ReadNP();
     if (!np) { DiagLog(@"np.js 读不到/解析失败"); SetShown(NO); return; }
     double playing = [np[@"playing"] doubleValue];
@@ -202,7 +263,15 @@ static void Tick(void) {
         SetShown(NO);
         return;
     }
-    static NSString *lastLine = nil;
+    UILabel *petBubble = FindPetBubbleLabel();
+    BOOL petTalking = (petBubble && !petBubble.hidden && petBubble.alpha > 0.01);
+    if (petTalking) {
+        // 桌宠正在说话，优先显示对话，歌词让位
+        SetShown(NO);
+        lastLine = nil;
+        return;
+    }
+
     if (!lastLine || ![lastLine isEqualToString:line]) {
         lastLine = line;
         gLabel.attributedText = Rainbow(line);
@@ -218,6 +287,16 @@ static UIView *FindDescendant(UIView *root, NSString *cls) {
     for (UIView *sub in root.subviews) {
         UIView *hit = FindDescendant(sub, cls);
         if (hit) return hit;
+    }
+    return nil;
+}
+
+static UILabel *FindPetBubbleLabel(void) {
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w == gWin) continue;
+        UIView *v = FindDescendant(w, @"MowangDaFeiYuPetBubble");
+        if ([v isKindOfClass:[UILabel class]]) return (UILabel *)v;
+        if (v) return nil;
     }
     return nil;
 }
@@ -289,7 +368,7 @@ static void Setup(void) {
     CGRect b = [UIScreen mainScreen].bounds;
     CGFloat bw = b.size.width - kSideMargin * 2, bh = kBubbleHeight;
     UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(kSideMargin, b.size.height * kBubbleYRatio, bw, bh)];
-    bubble.backgroundColor = [UIColor clearColor];
+    bubble.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.78];
     bubble.layer.cornerRadius = kCornerRadius;
     bubble.clipsToBounds = YES;
     bubble.userInteractionEnabled = NO;
@@ -308,9 +387,9 @@ static void Setup(void) {
     [win.rootViewController.view addSubview:bubble];
 
     UIView *tail = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 18, 18)];
-    tail.backgroundColor = [UIColor clearColor];
+    tail.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.78];
     tail.layer.cornerRadius = 4;
-    tail.hidden = YES;
+    
     tail.transform = CGAffineTransformMakeRotation(M_PI / 4);
     tail.userInteractionEnabled = NO;
     [win.rootViewController.view addSubview:tail];
@@ -320,10 +399,11 @@ static void Setup(void) {
     LBLog(@"setup ok, window=%@", win);
 
     [NSTimer scheduledTimerWithTimeInterval:kRefresh repeats:YES block:^(NSTimer *t) { Tick(); }];
+    [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) { DrivePet(); }];
 }
 
 %ctor {
-    LBLog(@"dylib loaded v1.9");
+    LBLog(@"dylib loaded v2.1");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         Setup();
     });
