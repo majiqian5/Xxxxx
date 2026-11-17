@@ -64,11 +64,74 @@ static void InstallRoamHook(void) {
     LBLog(@"roam hook installed");
 }
 
+static void ProbePet(void) {
+    NSMutableArray *names = [NSMutableArray array];
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        [names addObject:NSStringFromClass([w class])];
+    }
+    LBLog(@"windows: %@", [names componentsJoinedByString:@","]);
+
+    Class cls = objc_getClass("MowangDaFeiYuPetController");
+    LBLog(@"ctrl class: %@", cls ? NSStringFromClass(cls) : @"nil");
+    if (!cls) return;
+    unsigned int n = 0;
+    Method *ms = class_copyMethodList(cls, &n);
+    NSMutableArray *roam = [NSMutableArray array];
+    for (unsigned int i = 0; i < n; i++) {
+        NSString *sn = NSStringFromSelector(method_getName(ms[i]));
+        if ([sn containsString:@"roam"]) [roam addObject:sn];
+    }
+    free(ms);
+    LBLog(@"roam methods: %@", [roam componentsJoinedByString:@","]);
+}
+
+static UIWindow *FindPetWindow(void) {
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w == gWin) continue;
+        if ([NSStringFromClass([w class]) containsString:@"MowangDaFeiYuPet"]) return w;
+    }
+    return nil;
+}
+
+static void LayoutText(void) {
+    if (!gBubble || !gLabel) return;
+    CGSize sz = [gLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, kBubbleHeight)];
+    CGFloat bw = gBubble.bounds.size.width;
+    CGFloat inner = bw - 24.0;
+    CGFloat h = kBubbleHeight - 10.0;
+    [gLabel.layer removeAnimationForKey:@"marquee"];
+    if (sz.width <= inner || inner <= 0) {
+        gLabel.textAlignment = NSTextAlignmentCenter;
+        gLabel.frame = CGRectMake(12, 5, inner, h);
+        return;
+    }
+    // 太长：单行跑马灯滚动
+    gLabel.textAlignment = NSTextAlignmentLeft;
+    CGFloat startX = 12.0;
+    CGFloat endX = bw - 12.0 - sz.width;
+    gLabel.frame = CGRectMake(startX, 5, sz.width, h);
+    CGFloat dur = (sz.width - inner) / 45.0 + 1.2;
+    CABasicAnimation *a = [CABasicAnimation animationWithKeyPath:@"position.x"];
+    a.fromValue = @(startX + sz.width / 2.0);
+    a.toValue = @(endX + sz.width / 2.0);
+    a.duration = dur;
+    a.repeatCount = HUGE_VALF;
+    a.removedOnCompletion = NO;
+    a.beginTime = CACurrentMediaTime() + 0.6;
+    [gLabel.layer addAnimation:a forKey:@"marquee"];
+}
+
 static void DrivePet(void) {
     InstallRoamHook();
-    if (!gRoamHookInstalled) return;
-    UIView *pet = FindPetView();
-    if (!pet) return;
+    UIView *pet = (UIView *)FindPetWindow();
+    if (!pet) pet = FindPetView();
+    if (!pet) { DiagLog(@"找不到桌宠视图"); return; }
+    static NSTimeInterval lastReport = 0;
+    NSTimeInterval rn = [NSDate timeIntervalSinceReferenceDate];
+    if (rn - lastReport > 60) {
+        lastReport = rn;
+        LBLog(@"drive: pet=%@ hook=%d", NSStringFromClass([pet class]), (int)gRoamHookInstalled);
+    }
 
     static NSTimeInterval nextAt = 0;
     static BOOL inited = NO;
@@ -273,6 +336,7 @@ static void Tick(void) {
     if (!lastLine || ![lastLine isEqualToString:line]) {
         lastLine = line;
         gLabel.attributedText = Rainbow(line);
+        LayoutText();
         LBLog(@"line: %@", line);
     }
     LayoutBubble();
@@ -343,7 +407,7 @@ static void LayoutBubble(void) {
     if (tx < x + 12) tx = x + 12;
     if (tx > x + bw - 30) tx = x + bw - 30;
     gTail.frame = CGRectMake(tx, top + bh - 9, 18, 18);
-    gTail.hidden = !gShown;
+    gTail.hidden = YES;
 }
 
 static void Setup(void) {
@@ -364,9 +428,9 @@ static void Setup(void) {
     gWin = win;
 
     CGRect b = [UIScreen mainScreen].bounds;
-    CGFloat bw = b.size.width - kSideMargin * 2, bh = kBubbleHeight;
+    CGFloat bw = MIN(300.0, b.size.width - 32.0), bh = kBubbleHeight;
     UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(kSideMargin, b.size.height * kBubbleYRatio, bw, bh)];
-    bubble.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.78];
+    bubble.backgroundColor = [UIColor clearColor];
     bubble.layer.cornerRadius = kCornerRadius;
     bubble.clipsToBounds = YES;
     bubble.userInteractionEnabled = NO;
@@ -374,8 +438,6 @@ static void Setup(void) {
     UILabel *label = [[UILabel alloc] initWithFrame:CGRectInset(bubble.bounds, 14, 8)];
     label.numberOfLines = 1;
     label.textAlignment = NSTextAlignmentCenter;
-    label.adjustsFontSizeToFitWidth = YES;
-    label.minimumScaleFactor = 0.7;
     label.font = [UIFont boldSystemFontOfSize:kFontSize];
     label.layer.shadowColor = [UIColor blackColor].CGColor;
     label.layer.shadowOpacity = 0.85;
@@ -385,7 +447,7 @@ static void Setup(void) {
     [win.rootViewController.view addSubview:bubble];
 
     UIView *tail = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 18, 18)];
-    tail.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.78];
+    tail.backgroundColor = [UIColor clearColor];
     tail.layer.cornerRadius = 4;
     
     tail.transform = CGAffineTransformMakeRotation(M_PI / 4);
@@ -398,10 +460,11 @@ static void Setup(void) {
 
     [NSTimer scheduledTimerWithTimeInterval:kRefresh repeats:YES block:^(NSTimer *t) { Tick(); }];
     [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) { DrivePet(); }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ ProbePet(); });
 }
 
 %ctor {
-    LBLog(@"dylib loaded v2.1");
+    LBLog(@"dylib loaded v2.3");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         Setup();
     });
