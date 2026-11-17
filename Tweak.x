@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
+#import <math.h>
 
 #define kLogPath @"/var/mobile/Documents/lyricbubble.log"
 #define kNP      @"/var/mobile/Documents/np.js"
@@ -37,6 +38,8 @@ static BOOL     gShown = NO;
 static BOOL     gShownPetBubble = NO;
 
 static void LayoutBubble(void);
+static UILabel *FindPetBubbleLabel(void);
+static UIView *FindPetView(void);
 
 static void LBLog(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
@@ -311,6 +314,13 @@ static void Setup(void) {
     label.font = [UIFont boldSystemFontOfSize:kFontSize];
     [bubble addSubview:label];
     [win.rootViewController.view addSubview:bubble];
+
+    UIView *tail = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 18, 18)];
+    tail.backgroundColor = bubble.backgroundColor;
+    tail.layer.cornerRadius = 4;
+    tail.transform = CGAffineTransformMakeRotation(M_PI / 4);
+    tail.userInteractionEnabled = NO;
+    [win.rootViewController.view addSubview:tail];
 
     gBubble = bubble; gLabel = label; gTail = tail; gShown = NO;
     [gBubble setHidden:YES];
