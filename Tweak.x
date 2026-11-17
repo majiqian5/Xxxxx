@@ -35,10 +35,8 @@ static UIView  *gBubble;
 static UIView  *gTail;
 static UILabel *gLabel;
 static BOOL     gShown = NO;
-static BOOL     gShownPetBubble = NO;
 
 static void LayoutBubble(void);
-static UILabel *FindPetBubbleLabel(void);
 static UIView *FindPetView(void);
 
 static void LBLog(NSString *fmt, ...) {
@@ -204,17 +202,12 @@ static void Tick(void) {
         SetShown(NO);
         return;
     }
-    UILabel *petBubble = FindPetBubbleLabel();
-    if (petBubble) {
-        petBubble.attributedText = Rainbow(line);
-        petBubble.hidden = NO;
-        petBubble.alpha = 1.0;
-        SetShown(NO);          // 不用自绘气泡，避免盖住
-        if (!gShownPetBubble) { gShownPetBubble = YES; LBLog(@"写入桌宠气泡: %@", line); }
-        return;
+    static NSString *lastLine = nil;
+    if (!lastLine || ![lastLine isEqualToString:line]) {
+        lastLine = line;
+        gLabel.attributedText = Rainbow(line);
+        LBLog(@"line: %@", line);
     }
-    gShownPetBubble = NO;
-    gLabel.attributedText = Rainbow(line);
     LayoutBubble();
     SetShown(YES);
 }
@@ -225,16 +218,6 @@ static UIView *FindDescendant(UIView *root, NSString *cls) {
     for (UIView *sub in root.subviews) {
         UIView *hit = FindDescendant(sub, cls);
         if (hit) return hit;
-    }
-    return nil;
-}
-
-static UILabel *FindPetBubbleLabel(void) {
-    for (UIWindow *w in [UIApplication sharedApplication].windows) {
-        if (w == gWin) continue;
-        UIView *v = FindDescendant(w, @"MowangDaFeiYuPetBubble");
-        if ([v isKindOfClass:[UILabel class]]) return (UILabel *)v;
-        if (v) return nil;
     }
     return nil;
 }
@@ -273,7 +256,12 @@ static void LayoutBubble(void) {
     CGFloat x = cx - bw / 2;
     if (x < 8) x = 8;
     if (x + bw > sb.size.width - 8) x = sb.size.width - 8 - bw;
-    gBubble.frame = CGRectMake(x, top, bw, bh);
+    static CGRect lastFrame;
+    CGRect now = CGRectMake(x, top, bw, bh);
+    if (!CGRectEqualToRect(lastFrame, now)) {
+        lastFrame = now;
+        gBubble.frame = now;
+    }
     CGFloat tx = cx - 9;
     if (tx < x + 12) tx = x + 12;
     if (tx > x + bw - 30) tx = x + bw - 30;
@@ -301,7 +289,7 @@ static void Setup(void) {
     CGRect b = [UIScreen mainScreen].bounds;
     CGFloat bw = b.size.width - kSideMargin * 2, bh = kBubbleHeight;
     UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(kSideMargin, b.size.height * kBubbleYRatio, bw, bh)];
-    bubble.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.86];
+    bubble.backgroundColor = [UIColor clearColor];
     bubble.layer.cornerRadius = kCornerRadius;
     bubble.clipsToBounds = YES;
     bubble.userInteractionEnabled = NO;
@@ -312,12 +300,17 @@ static void Setup(void) {
     label.adjustsFontSizeToFitWidth = YES;
     label.minimumScaleFactor = 0.7;
     label.font = [UIFont boldSystemFontOfSize:kFontSize];
+    label.layer.shadowColor = [UIColor blackColor].CGColor;
+    label.layer.shadowOpacity = 0.85;
+    label.layer.shadowRadius = 2.0;
+    label.layer.shadowOffset = CGSizeMake(0, 1);
     [bubble addSubview:label];
     [win.rootViewController.view addSubview:bubble];
 
     UIView *tail = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 18, 18)];
-    tail.backgroundColor = bubble.backgroundColor;
+    tail.backgroundColor = [UIColor clearColor];
     tail.layer.cornerRadius = 4;
+    tail.hidden = YES;
     tail.transform = CGAffineTransformMakeRotation(M_PI / 4);
     tail.userInteractionEnabled = NO;
     [win.rootViewController.view addSubview:tail];
@@ -330,7 +323,7 @@ static void Setup(void) {
 }
 
 %ctor {
-    LBLog(@"dylib loaded v1.8");
+    LBLog(@"dylib loaded v1.9");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         Setup();
     });
