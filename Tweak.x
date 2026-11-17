@@ -31,8 +31,11 @@ static void DiagLog(NSString *msg) {
 
 static UIWindow *gWin;
 static UIView  *gBubble;
+static UIView  *gTail;
 static UILabel *gLabel;
 static BOOL     gShown = NO;
+
+static void LayoutBubble(void);
 
 static void LBLog(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
@@ -165,6 +168,7 @@ static void SetShown(BOOL show) {
     if (!gBubble || gShown == show) return;
     gShown = show;
     [gBubble setHidden:!show];
+    [gTail setHidden:!show];
 }
 
 static void Tick(void) {
@@ -196,9 +200,61 @@ static void Tick(void) {
         SetShown(NO);
         return;
     }
-    if (!gShown) LBLog(@"line: %@", line);
     gLabel.attributedText = Rainbow(line);
+    LayoutBubble();
     SetShown(YES);
+}
+
+static UIView *FindDescendant(UIView *root, NSString *cls) {
+    if (!root) return nil;
+    if ([NSStringFromClass([root class]) containsString:cls]) return root;
+    for (UIView *sub in root.subviews) {
+        UIView *hit = FindDescendant(sub, cls);
+        if (hit) return hit;
+    }
+    return nil;
+}
+
+static UIView *FindPetView(void) {
+    NSArray<UIWindow *> *wins = [UIApplication sharedApplication].windows;
+    for (UIWindow *w in wins) {
+        if ([NSStringFromClass([w class]) containsString:@"MowangDaFeiYuPet"]) {
+            UIView *v = FindDescendant(w, @"TouchView") ?: w;
+            return v;
+        }
+    }
+    for (UIWindow *w in wins) {
+        if (w == gWin) continue;
+        UIView *v = FindDescendant(w, @"MowangDaFeiYuPetTouchView");
+        if (!v) v = FindDescendant(w, @"MowangDaFeiYuPet");
+        if (v) return v;
+    }
+    return nil;
+}
+
+static void LayoutBubble(void) {
+    if (!gBubble) return;
+    CGRect sb = [UIScreen mainScreen].bounds;
+    CGFloat bw = MIN(300.0, sb.size.width - 32.0), bh = kBubbleHeight;
+    UIView *pet = FindPetView();
+    CGFloat cx = sb.size.width / 2, top = sb.size.height * kBubbleYRatio;
+    if (pet) {
+        CGRect pr = [pet convertRect:pet.bounds toView:nil];
+        if (pr.size.width > 0 && pr.size.height > 0) {
+            cx = CGRectGetMidX(pr);
+            top = CGRectGetMinY(pr) - bh - 14.0;
+            if (top < 70) top = CGRectGetMaxY(pr) + 14.0;
+        }
+    }
+    CGFloat x = cx - bw / 2;
+    if (x < 8) x = 8;
+    if (x + bw > sb.size.width - 8) x = sb.size.width - 8 - bw;
+    gBubble.frame = CGRectMake(x, top, bw, bh);
+    CGFloat tx = cx - 9;
+    if (tx < x + 12) tx = x + 12;
+    if (tx > x + bw - 30) tx = x + bw - 30;
+    gTail.frame = CGRectMake(tx, top + bh - 9, 18, 18);
+    gTail.hidden = !gShown;
 }
 
 static void Setup(void) {
@@ -212,7 +268,7 @@ static void Setup(void) {
         }
     }
     if (!win) win = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    win.windowLevel = UIWindowLevelAlert + 1;
+    win.windowLevel = UIWindowLevelAlert + 10;
     win.userInteractionEnabled = NO;
     win.hidden = NO;
     win.rootViewController = [UIViewController new];
@@ -241,7 +297,7 @@ static void Setup(void) {
     selfTest.layer.cornerRadius = 10;
     selfTest.userInteractionEnabled = NO;
     UILabel *t = [[UILabel alloc] initWithFrame:CGRectInset(selfTest.bounds, 6, 6)];
-    t.text = @"LB 1.5 已注入";
+    t.text = @"LB 1.6 已注入";
     t.textColor = [UIColor whiteColor];
     t.textAlignment = NSTextAlignmentCenter;
     t.font = [UIFont boldSystemFontOfSize:15];
@@ -251,7 +307,14 @@ static void Setup(void) {
         [selfTest removeFromSuperview];
     });
 
-    gBubble = bubble; gLabel = label; gShown = NO;
+    UIView *tail = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 18, 18)];
+    tail.backgroundColor = bubble.backgroundColor;
+    tail.layer.cornerRadius = 4;
+    tail.transform = CGAffineTransformMakeRotation(M_PI / 4);
+    tail.userInteractionEnabled = NO;
+    [win.rootViewController.view addSubview:tail];
+
+    gBubble = bubble; gLabel = label; gTail = tail; gShown = NO;
     [gBubble setHidden:YES];
     LBLog(@"setup ok, window=%@", win);
 
@@ -259,7 +322,7 @@ static void Setup(void) {
 }
 
 %ctor {
-    LBLog(@"dylib loaded v1.5");
+    LBLog(@"dylib loaded v1.6");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         Setup();
     });
