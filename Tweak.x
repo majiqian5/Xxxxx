@@ -38,6 +38,10 @@ static UIView  *gTail;
 static UILabel *gLabel;
 static BOOL     gShown = NO;
 
+static void LayoutBubble(void);
+static UILabel *FindPetBubbleLabel(void);
+static UIView *FindPetView(void);
+
 static BOOL gRoamHookInstalled = NO;
 static BOOL gRoamPaused = NO;
 
@@ -66,7 +70,6 @@ static void DrivePet(void) {
     UIView *pet = FindPetView();
     if (!pet) return;
 
-    static CGPoint target;
     static NSTimeInterval nextAt = 0;
     static BOOL inited = NO;
     NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
@@ -74,7 +77,6 @@ static void DrivePet(void) {
 
     if (!inited) {
         inited = YES;
-        target = pet.center;
         nextAt = now + 5 + arc4random_uniform(5);
         return;
     }
@@ -86,7 +88,6 @@ static void DrivePet(void) {
     if (maxY < margin) maxY = margin;
     CGPoint t = CGPointMake(margin + arc4random_uniform((uint32_t)(maxX - margin)),
                             margin + arc4random_uniform((uint32_t)(maxY - margin)));
-    target = t;
     nextAt = now + 6 + arc4random_uniform(6);
 
     [UIView animateWithDuration:1.4 delay:0
@@ -95,9 +96,6 @@ static void DrivePet(void) {
                      completion:nil];
 }
 
-static void LayoutBubble(void);
-static UILabel *FindPetBubbleLabel(void);
-static UIView *FindPetView(void);
 
 static void LBLog(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
