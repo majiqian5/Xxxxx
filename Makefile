@@ -15,5 +15,6 @@ TWEAK_NAME = LyricBubble
 LyricBubble_FILES = Tweak.x
 LyricBubble_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 LyricBubble_FRAMEWORKS = UIKit Foundation
+LyricBubble_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
 
 include $(THEOS_MAKE_PATH)/tweak.mk

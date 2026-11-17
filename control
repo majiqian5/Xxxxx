@@ -1,6 +1,6 @@
 Package: com.mowang.dafeiyupet.lyricbubble
 Name: 大肥鱼九色歌词气泡
-Version: 1.0.5
+Version: 1.1.0
 Architecture: iphoneos-arm64
 Description: 读取 np.js 与 l.plist，在桌宠上方显示九色歌词气泡；独立于原桌宠歌词逻辑。
 Maintainer: mowang

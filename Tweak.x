@@ -26,11 +26,17 @@ static void LBLog(NSString *fmt, ...) {
     va_end(ap);
     NSString *line = [NSString stringWithFormat:@"[bubble] %@\n", msg];
     NSFileManager *fm = [NSFileManager defaultManager];
-    if (![fm fileExistsAtPath:kLogPath]) [fm createFileAtPath:kLogPath contents:nil attributes:nil];
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kLogPath];
-    if (!fh) return;
-    @try { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; } @catch (NSException *e) {}
-    [fh closeFile];
+    NSArray *paths = @[kLogPath,
+                       @"/var/mobile/Library/Caches/lyricbubble.log",
+                       @"/tmp/lyricbubble.log",
+                       @"/var/mobile/Media/lyricbubble.log"];
+    for (NSString *path in paths) {
+        if (![fm fileExistsAtPath:path]) [fm createFileAtPath:path contents:nil attributes:nil];
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (!fh) continue;
+        @try { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; } @catch (NSException *e) {}
+        [fh closeFile];
+    }
 }
 
 static NSDictionary *ReadJSON(NSString *path) {
@@ -146,6 +152,22 @@ static void Setup(void) {
     [bubble addSubview:label];
     [win.rootViewController.view addSubview:bubble];
 
+    // 自检标记：注入成功后 5 秒内屏幕中部出现红块 + "LB OK"
+    UIView *selfTest = [[UIView alloc] initWithFrame:CGRectMake((b.size.width-180)/2, b.size.height*0.42, 180, 64)];
+    selfTest.backgroundColor = [UIColor redColor];
+    selfTest.layer.cornerRadius = 10;
+    selfTest.userInteractionEnabled = NO;
+    UILabel *t = [[UILabel alloc] initWithFrame:CGRectInset(selfTest.bounds, 6, 6)];
+    t.text = @"LB 1.1 已注入";
+    t.textColor = [UIColor whiteColor];
+    t.textAlignment = NSTextAlignmentCenter;
+    t.font = [UIFont boldSystemFontOfSize:15];
+    [selfTest addSubview:t];
+    [win.rootViewController.view addSubview:selfTest];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [selfTest removeFromSuperview];
+    });
+
     gBubble = bubble; gLabel = label; gShown = NO;
     [gBubble setHidden:YES];
     LBLog(@"setup ok, window=%@", win);
@@ -154,7 +176,7 @@ static void Setup(void) {
 }
 
 %ctor {
-    LBLog(@"dylib loaded");
+    LBLog(@"dylib loaded v1.1");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         Setup();
     });
