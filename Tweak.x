@@ -34,6 +34,7 @@ static UIView  *gBubble;
 static UIView  *gTail;
 static UILabel *gLabel;
 static BOOL     gShown = NO;
+static BOOL     gShownPetBubble = NO;
 
 static void LayoutBubble(void);
 
@@ -200,6 +201,16 @@ static void Tick(void) {
         SetShown(NO);
         return;
     }
+    UILabel *petBubble = FindPetBubbleLabel();
+    if (petBubble) {
+        petBubble.attributedText = Rainbow(line);
+        petBubble.hidden = NO;
+        petBubble.alpha = 1.0;
+        SetShown(NO);          // 不用自绘气泡，避免盖住
+        if (!gShownPetBubble) { gShownPetBubble = YES; LBLog(@"写入桌宠气泡: %@", line); }
+        return;
+    }
+    gShownPetBubble = NO;
     gLabel.attributedText = Rainbow(line);
     LayoutBubble();
     SetShown(YES);
@@ -211,6 +222,16 @@ static UIView *FindDescendant(UIView *root, NSString *cls) {
     for (UIView *sub in root.subviews) {
         UIView *hit = FindDescendant(sub, cls);
         if (hit) return hit;
+    }
+    return nil;
+}
+
+static UILabel *FindPetBubbleLabel(void) {
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w == gWin) continue;
+        UIView *v = FindDescendant(w, @"MowangDaFeiYuPetBubble");
+        if ([v isKindOfClass:[UILabel class]]) return (UILabel *)v;
+        if (v) return nil;
     }
     return nil;
 }
@@ -277,7 +298,7 @@ static void Setup(void) {
     CGRect b = [UIScreen mainScreen].bounds;
     CGFloat bw = b.size.width - kSideMargin * 2, bh = kBubbleHeight;
     UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(kSideMargin, b.size.height * kBubbleYRatio, bw, bh)];
-    bubble.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.62];
+    bubble.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.86];
     bubble.layer.cornerRadius = kCornerRadius;
     bubble.clipsToBounds = YES;
     bubble.userInteractionEnabled = NO;
@@ -291,29 +312,6 @@ static void Setup(void) {
     [bubble addSubview:label];
     [win.rootViewController.view addSubview:bubble];
 
-    // 自检标记：注入成功后 5 秒内屏幕中部出现红块 + "LB OK"
-    UIView *selfTest = [[UIView alloc] initWithFrame:CGRectMake((b.size.width-180)/2, b.size.height*0.42, 180, 64)];
-    selfTest.backgroundColor = [UIColor redColor];
-    selfTest.layer.cornerRadius = 10;
-    selfTest.userInteractionEnabled = NO;
-    UILabel *t = [[UILabel alloc] initWithFrame:CGRectInset(selfTest.bounds, 6, 6)];
-    t.text = @"LB 1.6 已注入";
-    t.textColor = [UIColor whiteColor];
-    t.textAlignment = NSTextAlignmentCenter;
-    t.font = [UIFont boldSystemFontOfSize:15];
-    [selfTest addSubview:t];
-    [win.rootViewController.view addSubview:selfTest];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [selfTest removeFromSuperview];
-    });
-
-    UIView *tail = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 18, 18)];
-    tail.backgroundColor = bubble.backgroundColor;
-    tail.layer.cornerRadius = 4;
-    tail.transform = CGAffineTransformMakeRotation(M_PI / 4);
-    tail.userInteractionEnabled = NO;
-    [win.rootViewController.view addSubview:tail];
-
     gBubble = bubble; gLabel = label; gTail = tail; gShown = NO;
     [gBubble setHidden:YES];
     LBLog(@"setup ok, window=%@", win);
@@ -322,7 +320,7 @@ static void Setup(void) {
 }
 
 %ctor {
-    LBLog(@"dylib loaded v1.6");
+    LBLog(@"dylib loaded v1.8");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         Setup();
     });
