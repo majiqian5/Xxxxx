@@ -6,6 +6,8 @@
 #define kLrcA    @"/var/jb/Library/Application Support/MowangDaFeiYuPet/l.plist"
 #define kLrcB    @"/var/jb/Library/Application Support/MowangDaFeiYuPet/lyrics.plist"
 #define kLrcC    @"/var/mobile/Library/Caches/dafeiyu_lyrics.plist"
+#define kLrcD    @"/var/mobile/Documents/l.plist"
+#define kLrcE    @"/var/mobile/Documents/lyrics.plist"
 
 // 可调参数
 #define kBubbleYRatio   0.70   // 气泡垂直位置（屏高比例）
@@ -14,6 +16,16 @@
 #define kCornerRadius   16.0
 #define kFontSize       17.0
 #define kRefresh        0.5
+
+static NSString *gLastDiag;
+static NSDate *gLastDiagAt;
+
+static void DiagLog(NSString *msg) {
+    NSDate *now = [NSDate date];
+    if (gLastDiagAt && [now timeIntervalSinceDate:gLastDiagAt] < 10 && [msg isEqualToString:gLastDiag]) return;
+    gLastDiagAt = now; gLastDiag = msg;
+    LBLog(@"diag: %@", msg);
+}
 
 static UIWindow *gWin;
 static UIView  *gBubble;
@@ -102,18 +114,34 @@ static void SetShown(BOOL show) {
 
 static void Tick(void) {
     NSDictionary *np = ReadJSON(kNP);
-    if (!np) { SetShown(NO); return; }
-    if ([np[@"playing"] doubleValue] < 0.5) { SetShown(NO); return; }
+    if (!np) { DiagLog(@"np.js 读不到/解析失败"); SetShown(NO); return; }
+    double playing = [np[@"playing"] doubleValue];
+    if (playing < 0.5) { DiagLog([NSString stringWithFormat:@"playing=%.2f", playing]); SetShown(NO); return; }
     double elapsed = [np[@"elapsed"] doubleValue];
 
-    NSDictionary *pl = ReadPlist(kLrcA) ?: ReadPlist(kLrcB) ?: ReadPlist(kLrcC);
-    NSString *line = CurrentLine(pl[@"lrc"], elapsed);
+    // 首选 np.js 自带的当前行（npbridged 已算好，无需再解析 lrc）
+    NSString *line = nil;
+    id l2 = np[@"lyricLine"];
+    if ([l2 isKindOfClass:[NSString class]] && [l2 length]) line = l2;
+
+    // 兜底：自己从 plist 里按时间轴算
     if (!line.length) {
-        NSString *l2 = np[@"lyricLine"];
-        if ([l2 isKindOfClass:[NSString class]] && l2.length) line = l2;
+        for (NSString *path in @[kLrcD, kLrcE, kLrcA, kLrcB, kLrcC]) {
+            NSDictionary *pl = ReadPlist(path);
+            if (!pl) continue;
+            NSString *lrc = pl[@"lrc"];
+            if ([lrc isKindOfClass:[NSString class]] && lrc.length)
+                line = CurrentLine(lrc, elapsed);
+            if (line.length) { DiagLog([NSString stringWithFormat:@"用 %@ 算出当前行", path]); break; }
+        }
     }
-    if (!line.length) { SetShown(NO); return; }
-    if (!gShown) LBLog(@"line: %@ (elapsed %.2f)", line, elapsed);
+
+    if (!line.length) {
+        DiagLog([NSString stringWithFormat:@"无歌词 el=%.2f playing=%.2f", elapsed, playing]);
+        SetShown(NO);
+        return;
+    }
+    if (!gShown) LBLog(@"line: %@", line);
     gLabel.attributedText = Rainbow(line);
     SetShown(YES);
 }
@@ -158,7 +186,7 @@ static void Setup(void) {
     selfTest.layer.cornerRadius = 10;
     selfTest.userInteractionEnabled = NO;
     UILabel *t = [[UILabel alloc] initWithFrame:CGRectInset(selfTest.bounds, 6, 6)];
-    t.text = @"LB 1.1 已注入";
+    t.text = @"LB 1.4 已注入";
     t.textColor = [UIColor whiteColor];
     t.textAlignment = NSTextAlignmentCenter;
     t.font = [UIFont boldSystemFontOfSize:15];
@@ -176,7 +204,7 @@ static void Setup(void) {
 }
 
 %ctor {
-    LBLog(@"dylib loaded v1.1");
+    LBLog(@"dylib loaded v1.4");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         Setup();
     });
