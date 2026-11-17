@@ -17,6 +17,8 @@
 #define kFontSize       17.0
 #define kRefresh        0.5
 
+static void LBLog(NSString *fmt, ...);
+
 static NSString *gLastDiag;
 static NSDate *gLastDiagAt;
 
