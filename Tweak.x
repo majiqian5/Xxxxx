@@ -60,6 +60,66 @@ static NSDictionary *ReadJSON(NSString *path) {
     return [obj isKindOfClass:[NSDictionary class]] ? obj : nil;
 }
 
+static NSString *ScanString(NSString *s, NSString *key) {
+    NSString *needle = [NSString stringWithFormat:@"\"%@\":\"", key];
+    NSRange r = [s rangeOfString:needle];
+    if (r.location == NSNotFound) return nil;
+    NSUInteger start = r.location + r.length;
+    NSUInteger i = start;
+    while (i < s.length) {
+        unichar c = [s characterAtIndex:i];
+        if (c == '"') break;
+        i++;
+    }
+    if (i <= start) return nil;
+    return [s substringWithRange:NSMakeRange(start, i - start)];
+}
+
+static double ScanNumber(NSString *s, NSString *key) {
+    NSString *needle = [NSString stringWithFormat:@"\"%@\":", key];
+    NSRange r = [s rangeOfString:needle];
+    if (r.location == NSNotFound) return 0;
+    NSUInteger start = r.location + r.length;
+    NSUInteger i = start;
+    while (i < s.length) {
+        unichar c = [s characterAtIndex:i];
+        if (c == ',' || c == '}') break;
+        i++;
+    }
+    return [[s substringWithRange:NSMakeRange(start, i - start)] doubleValue];
+}
+
+static NSDictionary *ReadNP(void) {
+    NSData *d = [NSData dataWithContentsOfFile:kNP];
+    if (!d || d.length < 8) return nil;
+    id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+    if ([obj isKindOfClass:[NSDictionary class]]) return obj;
+
+    NSString *raw = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+    if (!raw) return nil;
+
+    // np.js 实际是 window.NP_DATA={...};  取出中间对象再解析
+    NSRange b = [raw rangeOfString:@"{"];
+    NSRange e = [raw rangeOfString:@"}" options:NSBackwardsSearch];
+    if (b.location != NSNotFound && e.location != NSNotFound && e.location > b.location) {
+        NSString *j = [raw substringWithRange:NSMakeRange(b.location, e.location - b.location + 1)];
+        id o2 = [NSJSONSerialization JSONObjectWithData:[j dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+        if ([o2 isKindOfClass:[NSDictionary class]]) return o2;
+    }
+
+    // 最后兜底：按 key 直接扫文本
+    NSMutableDictionary *m = [NSMutableDictionary dictionary];
+    NSString *line = ScanString(raw, @"lyricLine");
+    NSString *title = ScanString(raw, @"title");
+    NSString *artist = ScanString(raw, @"artist");
+    if (line) m[@"lyricLine"] = line;
+    if (title) m[@"title"] = title;
+    if (artist) m[@"artist"] = artist;
+    m[@"playing"] = @(ScanNumber(raw, @"playing"));
+    m[@"elapsed"] = @(ScanNumber(raw, @"elapsed"));
+    return m.count > 2 ? m : nil;
+}
+
 static NSDictionary *ReadPlist(NSString *path) {
     NSData *d = [NSData dataWithContentsOfFile:path];
     if (!d || d.length < 8) return nil;
@@ -115,7 +175,7 @@ static void SetShown(BOOL show) {
 }
 
 static void Tick(void) {
-    NSDictionary *np = ReadJSON(kNP);
+    NSDictionary *np = ReadNP();
     if (!np) { DiagLog(@"np.js 读不到/解析失败"); SetShown(NO); return; }
     double playing = [np[@"playing"] doubleValue];
     if (playing < 0.5) { DiagLog([NSString stringWithFormat:@"playing=%.2f", playing]); SetShown(NO); return; }
@@ -188,7 +248,7 @@ static void Setup(void) {
     selfTest.layer.cornerRadius = 10;
     selfTest.userInteractionEnabled = NO;
     UILabel *t = [[UILabel alloc] initWithFrame:CGRectInset(selfTest.bounds, 6, 6)];
-    t.text = @"LB 1.4 已注入";
+    t.text = @"LB 1.5 已注入";
     t.textColor = [UIColor whiteColor];
     t.textAlignment = NSTextAlignmentCenter;
     t.font = [UIFont boldSystemFontOfSize:15];
@@ -206,7 +266,7 @@ static void Setup(void) {
 }
 
 %ctor {
-    LBLog(@"dylib loaded v1.4");
+    LBLog(@"dylib loaded v1.5");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         Setup();
     });
